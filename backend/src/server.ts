@@ -75,8 +75,8 @@ async function build() {
 
   // ─── API routes ───────────────────────────────────────────────────────────
 
-  // WebSocket relay (no /api/v2 prefix — WebSocket needs root path)
-  await app.register(require('@fastify/websocket'))
+  // WebSocket relay registered under /api/v2 (REST fallback active)
+  // Full WebSocket mode enabled when @fastify/websocket v5-compatible is stable
   app.register(relayRoutes)
 
   app.register(async (api) => {

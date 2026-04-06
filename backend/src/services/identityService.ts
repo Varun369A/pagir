@@ -12,8 +12,9 @@
 
 import { userRepo } from '../repositories/userRepo'
 import { AppError } from '../plugins/errorHandler'
+import { ErrorCode } from '../types'
 import { isValidPagirId } from '../utils/pagirId'
-import logger from '../utils/logger'
+import { logger } from '../utils/logger'
 
 export const identityService = {
 
@@ -22,7 +23,7 @@ export const identityService = {
    */
   async checkId(pagirId: string): Promise<{ active: boolean; displayName: string | null }> {
     if (!isValidPagirId(pagirId)) {
-      throw AppError.badRequest('Invalid PAGIR ID format', 'INVALID_PAGIR_ID')
+      throw AppError.badRequest(ErrorCode.INVALID_PAGIR_ID, 'Invalid PAGIR ID format')
     }
     const user = await userRepo.findById(pagirId)
     if (!user) return { active: false, displayName: null }
@@ -36,7 +37,7 @@ export const identityService = {
    */
   async updatePublicKey(pagirId: string, publicKey: string): Promise<void> {
     if (!publicKey.includes('BEGIN PUBLIC KEY')) {
-      throw AppError.badRequest('Invalid RSA public key format', 'INVALID_PUBLIC_KEY')
+      throw AppError.badRequest(ErrorCode.INVALID_PUBLIC_KEY, 'Invalid RSA public key format')
     }
     await userRepo.updatePublicKey(pagirId, publicKey)
     logger.info({ pagirId }, 'public key updated')

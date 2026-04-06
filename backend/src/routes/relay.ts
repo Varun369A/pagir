@@ -1,80 +1,41 @@
 /**
- * PAGIR 2 — WebSocket Relay Route
+ * PAGIR 2 — Blind Frame Relay (REST mode)
  *
- * Blind relay for online mesh mode. Server forwards PAGIR frames between
- * authenticated users WITHOUT being able to read the content.
+ * Server forwards PAGIR frames between authenticated users WITHOUT being
+ * able to read the content (zero-knowledge relay).
  *
  * WHAT THE SERVER SEES:
  *   - senderId (from JWT — authenticated)
- *   - receiverId (from frame header — plaintext routing field)
+ *   - receiverId (from request body — routing only)
  *   - encryptedPayload (opaque bytes — server cannot decrypt)
- *   - frameId (for deduplication)
- *   - timestamp
  *
  * WHAT THE SERVER CANNOT SEE:
- *   - Message content
- *   - File content
- *   - Session keys
+ *   - Message content, file content, session keys
+ *
+ * WebSocket mode: pending Fastify 5 compatible @fastify/websocket release.
+ * Until then all relay goes through POST /relay/frame (polling model).
  *
  * SECURITY:
- *   - JWT authentication required to connect
- *   - Rate limiting: max 20 frames/sec per sender (matches mobile FloodGuard)
- *   - Max frame size: 2MB (prevents memory exhaustion)
- *   - Receiver must be a registered user (prevents spam to non-users)
- *   - Frame TTL not re-incremented (server cannot inject frames)
+ *   - JWT authentication required
+ *   - Rate limiting: max 20 frames/sec per sender
+ *   - Max frame size: 2MB
+ *   - Receiver must be a registered user
  */
 
 import type { FastifyInstance } from 'fastify'
-import type { WebSocket } from 'ws'
 import { authenticate } from '../plugins/auth'
 import { userRepo } from '../repositories/userRepo'
 import { redis, RedisKey, TTL } from '../config/redis'
 import { AppError } from '../plugins/errorHandler'
-import logger from '../utils/logger'
+import { ErrorCode } from '../types'
+import { logger } from '../utils/logger'
 
-const MAX_FRAME_SIZE    = 2 * 1024 * 1024  // 2MB
-const MAX_FRAMES_PER_S  = 20
-const RATE_WINDOW_S     = 1
-
-/** Map<pagirId, WebSocket> — active connections */
-const connections = new Map<string, WebSocket>()
+const MAX_FRAME_SIZE   = 2 * 1024 * 1024   // 2 MB
+const MAX_FRAMES_PER_S = 20
+const RATE_WINDOW_S    = 1
 
 export async function relayRoutes(app: FastifyInstance) {
-  // WebSocket endpoint — requires JWT auth via query param or header
-  app.get('/ws', {
-    websocket: true,
-    preHandler: authenticate,
-  }, async (socket: WebSocket, request: any) => {
-    const pagirId = request.user.pagirId
-    if (!pagirId) { socket.close(4001, 'Unauthorized'); return }
-
-    // Register connection
-    connections.set(pagirId, socket)
-    logger.info({ pagirId }, 'relay: client connected')
-
-    socket.on('message', async (data: Buffer) => {
-      try {
-        await handleInboundFrame(pagirId, data)
-      } catch (err: any) {
-        socket.send(JSON.stringify({ error: err.message }))
-      }
-    })
-
-    socket.on('close', () => {
-      connections.delete(pagirId)
-      logger.info({ pagirId }, 'relay: client disconnected')
-    })
-
-    socket.on('error', (err) => {
-      logger.warn({ pagirId, err: err.message }, 'relay: socket error')
-      connections.delete(pagirId)
-    })
-
-    // Send connection ack
-    socket.send(JSON.stringify({ type: 'connected', pagirId }))
-  })
-
-  // REST fallback: POST /relay/frame (for clients that can't WebSocket)
+  // ─── POST /relay/frame — send an encrypted frame ─────────────────────────
   app.post('/relay/frame', {
     preHandler: authenticate,
     schema: {
@@ -82,79 +43,78 @@ export async function relayRoutes(app: FastifyInstance) {
         type: 'object',
         required: ['receiverId', 'frameBase64'],
         properties: {
-          receiverId:   { type: 'string', minLength: 15, maxLength: 20 },
-          frameBase64:  { type: 'string', maxLength: Math.ceil(MAX_FRAME_SIZE * 4 / 3) + 4 },
+          receiverId:  { type: 'string', minLength: 15, maxLength: 22 },
+          frameBase64: { type: 'string', maxLength: Math.ceil(MAX_FRAME_SIZE * 4 / 3) + 8 },
         },
       },
     },
   }, async (request: any, reply: any) => {
-    const { receiverId, frameBase64 } = request.body
+    const { receiverId, frameBase64 } = request.body as {
+      receiverId: string
+      frameBase64: string
+    }
     const senderId = request.user.pagirId
 
     const frameRaw = Buffer.from(frameBase64, 'base64')
-    await handleInboundFrame(senderId, frameRaw, receiverId)
-    return reply.send({ success: true })
+
+    if (frameRaw.length > MAX_FRAME_SIZE) {
+      throw AppError.badRequest(ErrorCode.FRAME_TOO_LARGE, 'Frame exceeds 2 MB limit')
+    }
+
+    // Rate limit per sender (sliding window in Redis)
+    const rateKey = RedisKey.relayRateLimit(senderId)
+    const now     = Date.now()
+    await redis.zadd(rateKey, { score: now, member: `${now}-${Math.random()}` })
+    await redis.zremrangebyscore(rateKey, 0, now - RATE_WINDOW_S * 1000)
+    const count = await redis.zcard(rateKey)
+    await redis.expire(rateKey, RATE_WINDOW_S + 5)
+
+    if (count > MAX_FRAMES_PER_S) {
+      throw AppError.tooManyRequests(ErrorCode.RATE_LIMIT_EXCEEDED, 'Relay rate limit exceeded')
+    }
+
+    if (frameRaw.length < 72) {
+      throw AppError.badRequest(ErrorCode.INVALID_FRAME, 'Frame too short — invalid PAGIR frame')
+    }
+
+    // Verify receiver exists
+    const receiver = await userRepo.findActiveById(receiverId)
+    if (!receiver) {
+      throw AppError.notFound(ErrorCode.RECEIVER_NOT_FOUND, 'Receiver not found')
+    }
+
+    // Queue for offline delivery (TTL 48h, max 1000 frames per user)
+    const queueKey   = RedisKey.offlineQueue(receiverId)
+    const frameEntry = JSON.stringify({
+      senderId,
+      frame: frameBase64,
+      ts:    now,
+    })
+    await redis.lpush(queueKey, frameEntry)
+    await redis.expire(queueKey, TTL.offlineQueue)
+    await redis.ltrim(queueKey, 0, 999)
+
+    logger.debug({ senderId, receiverId, bytes: frameRaw.length }, 'relay: frame queued')
+    return reply.send({ success: true, queued: true })
   })
-}
 
-// ─── Frame relay logic ────────────────────────────────────────────────────────
+  // ─── GET /relay/poll — fetch queued frames for the authenticated user ─────
+  app.get('/relay/poll', {
+    preHandler: authenticate,
+  }, async (request: any, reply: any) => {
+    const pagirId  = request.user.pagirId
+    const queueKey = RedisKey.offlineQueue(pagirId)
 
-async function handleInboundFrame(
-  senderId: string,
-  data:     Buffer | Uint8Array,
-  overrideReceiverId?: string,
-): Promise<void> {
-  // 1. Size check
-  if (data.length > MAX_FRAME_SIZE) {
-    throw AppError.badRequest('Frame too large', 'FRAME_TOO_LARGE')
-  }
+    // Drain up to 50 frames per poll
+    const entries = await redis.lrange(queueKey, 0, 49)
+    if (entries.length > 0) {
+      await redis.ltrim(queueKey, entries.length, -1)
+    }
 
-  // 2. Rate limit (Redis sliding window)
-  const rateKey = RedisKey.relayRateLimit(senderId)
-  const now     = Date.now()
-  await redis.zadd(rateKey, { score: now, member: `${now}-${Math.random()}` })
-  await redis.zremrangebyscore(rateKey, 0, now - RATE_WINDOW_S * 1000)
-  const count = await redis.zcard(rateKey)
-  await redis.expire(rateKey, RATE_WINDOW_S + 5)
+    const frames = entries.map((e: string) => {
+      try { return JSON.parse(e) } catch { return null }
+    }).filter(Boolean)
 
-  if (count > MAX_FRAMES_PER_S) {
-    throw AppError.tooManyRequests('Rate limit exceeded', 'RELAY_RATE_LIMIT')
-  }
-
-  // 3. Parse receiver from frame header (bytes 40-56 are receiver PAGIR ID)
-  let receiverId = overrideReceiverId
-  if (!receiverId) {
-    if (data.length < 72) throw AppError.badRequest('Frame too short', 'INVALID_FRAME')
-    // Bytes 40-55: receiver ID (16 ASCII bytes, dashes stripped)
-    const receiverBytes = Buffer.from(data).slice(40, 56)
-    const raw = receiverBytes.toString('ascii').replace(/\x00/g, '')
-    receiverId = `${raw.slice(0,3)}-${raw.slice(3,7)}-${raw.slice(7,11)}-${raw.slice(11,15)}`
-  }
-
-  // 4. Verify receiver exists (prevent sending to non-users)
-  const receiver = await userRepo.findActiveById(receiverId)
-  if (!receiver) {
-    throw AppError.notFound('Receiver not found', 'RECEIVER_NOT_FOUND')
-  }
-
-  // 5. Deliver via WebSocket if receiver is online
-  const receiverSocket = connections.get(receiverId)
-  if (receiverSocket?.readyState === 1 /* OPEN */) {
-    receiverSocket.send(data)
-    logger.debug({ senderId, receiverId, bytes: data.length }, 'relay: delivered online')
-    return
-  }
-
-  // 6. Queue for offline delivery (store in Redis, TTL 48h)
-  const queueKey = RedisKey.offlineQueue(receiverId)
-  const frameEntry = JSON.stringify({
-    senderId,
-    frame:   Buffer.from(data).toString('base64'),
-    ts:      now,
+    return reply.send({ success: true, frames })
   })
-  await redis.lpush(queueKey, frameEntry)
-  await redis.expire(queueKey, TTL.offlineQueue)
-  await redis.ltrim(queueKey, 0, 999)  // max 1000 queued frames
-
-  logger.debug({ senderId, receiverId }, 'relay: queued offline')
 }

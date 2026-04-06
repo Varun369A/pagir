@@ -13,6 +13,7 @@
 import type { FastifyRequest, FastifyReply } from 'fastify'
 import { redis } from '../config/redis'
 import { AppError } from './errorHandler'
+import { ErrorCode } from '../types'
 
 interface RateLimitOptions {
   max:    number   // max requests in window
@@ -42,8 +43,8 @@ export function rateLimit(opts: RateLimitOptions) {
 
     if (count > opts.max) {
       throw AppError.tooManyRequests(
+        ErrorCode.RATE_LIMIT_EXCEEDED,
         `Too many requests. Allowed ${opts.max} per ${opts.window}s.`,
-        'RATE_LIMIT_EXCEEDED'
       )
     }
   }

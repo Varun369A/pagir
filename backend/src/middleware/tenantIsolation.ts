@@ -33,7 +33,8 @@
 import type { FastifyRequest, FastifyReply } from 'fastify'
 import { db } from '../config/database'
 import { AppError } from '../plugins/errorHandler'
-import logger from '../utils/logger'
+import { ErrorCode } from '../types'
+import { logger } from '../utils/logger'
 
 // ─── Fastify middleware ───────────────────────────────────────────────────────
 
@@ -47,7 +48,7 @@ export async function enforceTenant(
 ): Promise<void> {
   const user = (request as any).user
   if (!user?.pagirId) {
-    throw AppError.unauthorized('MISSING_TENANT', 'Tenant context required')
+    throw AppError.unauthorized(ErrorCode.MISSING_TENANT, 'Tenant context required')
   }
   ;(request as any).tenantId = user.pagirId
 }
@@ -157,14 +158,14 @@ export function withTenantContext(tenantId: string) {
         async update({ args, query }: any) {
           if (args.where?.id && args.where.id !== tenantId) {
             _logViolation('user.update', tenantId, args.where.id)
-            throw AppError.forbidden('TENANT_VIOLATION', 'Cannot modify another user')
+            throw AppError.forbidden(ErrorCode.TENANT_VIOLATION, 'Cannot modify another user')
           }
           return query(args)
         },
         async delete({ args, query }: any) {
           if (args.where?.id && args.where.id !== tenantId) {
             _logViolation('user.delete', tenantId, args.where.id)
-            throw AppError.forbidden('TENANT_VIOLATION', 'Cannot delete another user')
+            throw AppError.forbidden(ErrorCode.TENANT_VIOLATION, 'Cannot delete another user')
           }
           return query(args)
         },
@@ -200,7 +201,7 @@ function _assertTenantFilter(where: any, tenantId: string, operation: string): v
 function _assertOwnership(ownerId: string | undefined, tenantId: string, operation: string): void {
   if (ownerId && ownerId !== tenantId) {
     _logViolation(operation, tenantId, ownerId)
-    throw AppError.forbidden('TENANT_VIOLATION', `Cannot create resource for another tenant`)
+    throw AppError.forbidden(ErrorCode.TENANT_VIOLATION, `Cannot create resource for another tenant`)
   }
 }
 

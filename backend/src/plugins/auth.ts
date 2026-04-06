@@ -50,7 +50,7 @@ export async function authenticate(
     throw AppError.unauthorized(ErrorCode.TOKEN_INVALID, 'Token has been revoked')
   }
 
-  request.user = { sub: payload.sub, jti: payload.jti }
+  request.user = { sub: payload.sub, jti: payload.jti, pagirId: payload.sub }
 }
 
 /**
@@ -61,11 +61,11 @@ export async function authenticateAdmin(
   request: FastifyRequest,
   _reply: FastifyReply
 ): Promise<void> {
-  if (!env.ADMIN_SECRET) {
+  if (!env.ADMIN_JWT_SECRET) {
     throw AppError.forbidden(ErrorCode.FORBIDDEN, 'Admin routes are disabled')
   }
   const secret = request.headers['x-admin-secret']
-  if (secret !== env.ADMIN_SECRET) {
+  if (secret !== env.ADMIN_JWT_SECRET) {
     throw AppError.unauthorized(ErrorCode.UNAUTHORIZED, 'Invalid admin secret')
   }
 }

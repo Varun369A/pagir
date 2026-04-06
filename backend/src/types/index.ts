@@ -23,6 +23,7 @@ export enum ErrorCode {
   // Validation
   VALIDATION_ERROR    = 'VALIDATION_ERROR',
   INVALID_PAGIR_ID    = 'INVALID_PAGIR_ID',
+  INVALID_PUBLIC_KEY  = 'INVALID_PUBLIC_KEY',
 
   // Server
   INTERNAL_ERROR      = 'INTERNAL_ERROR',
@@ -31,6 +32,23 @@ export enum ErrorCode {
   // Transfer
   TRANSFER_NOT_FOUND  = 'TRANSFER_NOT_FOUND',
   TRANSFER_EXPIRED    = 'TRANSFER_EXPIRED',
+
+  // Tenant / multi-user isolation
+  MISSING_TENANT      = 'MISSING_TENANT',
+  TENANT_VIOLATION    = 'TENANT_VIOLATION',
+
+  // Friends / social
+  ALREADY_FRIENDS     = 'ALREADY_FRIENDS',
+  REQUEST_PENDING     = 'REQUEST_PENDING',
+  REQUEST_NOT_FOUND   = 'REQUEST_NOT_FOUND',
+  BLOCKED_USER        = 'BLOCKED_USER',
+  SELF_FRIEND_REQUEST = 'SELF_FRIEND_REQUEST',
+
+  // Relay / frame
+  FRAME_TOO_LARGE     = 'FRAME_TOO_LARGE',
+  INVALID_FRAME       = 'INVALID_FRAME',
+  RATE_LIMIT_EXCEEDED = 'RATE_LIMIT_EXCEEDED',
+  RECEIVER_NOT_FOUND  = 'RECEIVER_NOT_FOUND',
 }
 
 // ─── API response shape ───────────────────────────────────────────────────────
@@ -63,8 +81,9 @@ export interface JwtPayload {
 }
 
 export interface AuthenticatedUser {
-  sub: string
-  jti: string
+  sub:     string   // PAGIR ID (JWT subject)
+  jti:     string   // token ID
+  pagirId: string   // alias for sub — used in route handlers
 }
 
 // Fastify request augmentation

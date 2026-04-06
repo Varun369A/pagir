@@ -22,8 +22,9 @@ import { z } from 'zod'
 import { authenticate } from '../plugins/auth'
 import { db } from '../config/database'
 import { AppError } from '../plugins/errorHandler'
+import { ErrorCode } from '../types'
 import { userRepo } from '../repositories/userRepo'
-import logger from '../utils/logger'
+import { logger } from '../utils/logger'
 
 const SendRequestBody = z.object({
   receiverId: z.string().min(15).max(20),
@@ -38,11 +39,11 @@ export async function friendsRoutes(app: FastifyInstance) {
     const senderId = request.user.pagirId
 
     if (senderId === body.receiverId) {
-      throw AppError.badRequest('Cannot add yourself', 'SELF_FRIEND_REQUEST')
+      throw AppError.badRequest(ErrorCode.SELF_FRIEND_REQUEST, 'Cannot add yourself')
     }
 
     const receiver = await userRepo.findActiveById(body.receiverId)
-    if (!receiver) throw AppError.notFound('User not found', 'USER_NOT_FOUND')
+    if (!receiver) throw AppError.notFound(ErrorCode.USER_NOT_FOUND, 'User not found')
 
     // Check for existing request/friendship
     const existing = await db.friendRequest.findFirst({
@@ -55,15 +56,15 @@ export async function friendsRoutes(app: FastifyInstance) {
     })
 
     if (existing?.status === 'ACCEPTED') {
-      throw AppError.badRequest('Already friends', 'ALREADY_FRIENDS')
+      throw AppError.badRequest(ErrorCode.ALREADY_FRIENDS, 'Already friends')
     }
 
     if (existing?.status === 'PENDING') {
-      throw AppError.badRequest('Request already sent', 'REQUEST_PENDING')
+      throw AppError.badRequest(ErrorCode.REQUEST_PENDING, 'Request already sent')
     }
 
     if (existing?.status === 'BLOCKED') {
-      throw AppError.forbidden('Blocked', 'BLOCKED')
+      throw AppError.forbidden(ErrorCode.BLOCKED_USER, 'You are blocked by this user')
     }
 
     const req = await db.friendRequest.create({
@@ -116,7 +117,7 @@ export async function friendsRoutes(app: FastifyInstance) {
     const req = await db.friendRequest.findFirst({
       where: { id, receiverId: pagirId, status: 'PENDING' },
     })
-    if (!req) throw AppError.notFound('Request not found', 'REQUEST_NOT_FOUND')
+    if (!req) throw AppError.notFound(ErrorCode.REQUEST_NOT_FOUND, 'Request not found')
 
     await db.$transaction([
       db.friendRequest.update({ where: { id }, data: { status: 'ACCEPTED' } }),

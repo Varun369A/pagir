@@ -32,12 +32,12 @@ export const tokenService = {
     const accessToken = jwt.sign(
       { sub: pagirId, jti: accessJti },
       privateKey,
-      { algorithm: 'RS256', expiresIn: env.JWT_ACCESS_TTL as string }
+      { algorithm: 'RS256', expiresIn: env.JWT_ACCESS_TTL as any }
     )
     const refreshToken = jwt.sign(
       { sub: pagirId, jti: refreshJti },
       privateKey,
-      { algorithm: 'RS256', expiresIn: env.JWT_REFRESH_TTL as string }
+      { algorithm: 'RS256', expiresIn: env.JWT_REFRESH_TTL as any }
     )
 
     const redis = getRedis()
