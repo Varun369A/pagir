@@ -55,9 +55,10 @@ export default function SettingsScreen({ navigation }: Props) {
         setProfile({
           pagirId:     serverProfile.pagirId,
           displayName: serverProfile.displayName ?? null,
-          email:       serverProfile.email ?? null,
+          email:       null,
           publicKey:   serverProfile.publicKey ?? null,
         })
+        setLoading(false)
         return
       }
     } catch {

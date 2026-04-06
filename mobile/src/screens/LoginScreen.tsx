@@ -22,6 +22,11 @@ import type { RootState, AppDispatch } from '../store'
 import { apiClient } from '../store/apiClient'
 import { Colors, Spacing, Radius, Typography } from '../theme'
 
+interface AccountFoundInfo {
+  phone: string
+  email: string
+}
+
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>
 type Mode  = 'phone' | 'email'
 
@@ -53,6 +58,7 @@ export default function LoginScreen({ navigation }: Props) {
   const [showPicker, setShowPicker] = useState(false)
   const [emailLoading, setEmailLoading] = useState(false)
   const [emailError, setEmailError]     = useState<string | null>(null)
+  const [accountFound, setAccountFound]   = useState<AccountFoundInfo | null>(null)
 
   const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
   const isPhoneValid = phone.replace(/\D/g, '').length >= 7
@@ -66,16 +72,21 @@ export default function LoginScreen({ navigation }: Props) {
     if (!phoneFormValid || loading) return
 
     const fullPhone = `${dialCode}${phone.replace(/\D/g, '')}`
+    const trimEmail = email.trim().toLowerCase()
     const result = await dispatch(requestOtp({
       phoneNumber: fullPhone,
-      email: email.trim().toLowerCase(),
+      email: trimEmail,
       platform: Platform.OS as 'android' | 'ios',
     }))
 
     if (requestOtp.fulfilled.match(result)) {
+      if (result.payload.alreadyRegistered) {
+        setAccountFound({ phone: fullPhone, email: trimEmail })
+        return
+      }
       navigation.navigate('OTP', {
         phoneNumber: fullPhone,
-        email:       email.trim().toLowerCase(),
+        email:       trimEmail,
         isNewUser:   false,
       })
       return
@@ -239,6 +250,43 @@ export default function LoginScreen({ navigation }: Props) {
         <Text style={S.footer}>PAGIR 2.0 · Zero-knowledge P2P</Text>
       </ScrollView>
 
+      {/* Account Found modal */}
+      <Modal visible={!!accountFound} transparent animationType="fade" onRequestClose={() => setAccountFound(null)}>
+        <View style={S.accountFoundOverlay}>
+          <View style={S.accountFoundSheet}>
+            <View style={S.accountFoundIconWrap}>
+              <Text style={S.accountFoundIcon}>✓</Text>
+            </View>
+            <Text style={S.accountFoundTitle}>Account Found</Text>
+            <Text style={S.accountFoundBody}>
+              An existing PAGIR account is linked to{'\n'}
+              <Text style={S.accountFoundHighlight}>{accountFound?.phone}</Text>
+            </Text>
+            <Text style={S.accountFoundSub}>
+              A verification code has been sent to{'\n'}
+              <Text style={S.accountFoundHighlight}>{accountFound?.email}</Text>
+            </Text>
+            <TouchableOpacity
+              style={S.accountFoundBtn}
+              onPress={() => {
+                const info = accountFound!
+                setAccountFound(null)
+                navigation.navigate('OTP', {
+                  phoneNumber: info.phone,
+                  email:       info.email,
+                  isNewUser:   false,
+                })
+              }}
+            >
+              <Text style={S.accountFoundBtnText}>Enter verification code</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={S.accountFoundCancel} onPress={() => setAccountFound(null)}>
+              <Text style={S.accountFoundCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* Country picker */}
       <Modal visible={showPicker} transparent animationType="slide" onRequestClose={() => setShowPicker(false)}>
         <View style={S.modalOverlay}>
@@ -316,4 +364,17 @@ const S = StyleSheet.create({
   countryRow:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.bg },
   countryName:  { fontSize: 15, color: Colors.textSecondary },
   countryDial:  { fontSize: 15, color: Colors.primary, fontWeight: '600' },
+
+  accountFoundOverlay:    { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
+  accountFoundSheet:      { backgroundColor: Colors.surface, borderRadius: 20, width: '100%', padding: 28, alignItems: 'center' },
+  accountFoundIconWrap:   { width: 64, height: 64, borderRadius: 32, backgroundColor: Colors.primaryDeep, borderWidth: 2, borderColor: Colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  accountFoundIcon:       { fontSize: 28, color: Colors.primary },
+  accountFoundTitle:      { fontSize: 20, fontWeight: '800', color: Colors.textPrimary, marginBottom: 12, textAlign: 'center' },
+  accountFoundBody:       { fontSize: 14, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 6 },
+  accountFoundSub:        { fontSize: 14, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+  accountFoundHighlight:  { color: Colors.primary, fontWeight: '700' },
+  accountFoundBtn:        { width: '100%', height: 52, backgroundColor: Colors.primary, borderRadius: Radius.lg, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  accountFoundBtnText:    { fontSize: 16, fontWeight: '700', color: Colors.textInverse },
+  accountFoundCancel:     { paddingVertical: 10 },
+  accountFoundCancelText: { fontSize: 14, color: Colors.textMuted },
 })

@@ -3,7 +3,7 @@
  *
  * Three input methods:
  *   1. Manual PAGIR ID entry
- *   2. QR scan (via VisionCamera + QR decode)
+ *   2. QR scan (via VisionCamera + native code scanner)
  *   3. Paste from clipboard
  *
  * On submit:
@@ -15,15 +15,16 @@
 
 import React, { useCallback, useState } from 'react'
 import {
-  ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
+  ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native'
 import Clipboard from '@react-native-clipboard/clipboard'
 import type { NativeStackScreenProps } from '@react-navigation/native-stack'
+import { Camera, useCameraDevice, useCameraPermission, useCodeScanner } from 'react-native-vision-camera'
 import type { RootStackParamList } from '../navigation/AppNavigator'
 import { apiClient } from '../store/apiClient'
 import { contactStore } from '../services/ContactStore'
-import { isValidPagirId } from '../utils/pagirId'
+import { isValidPagirId, decodePagirBundle } from '../utils/pagirId'
 import { Colors, Spacing, Radius, Typography } from '../theme'
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddContact'>
@@ -34,8 +35,70 @@ export default function AddContactScreen({ navigation }: Props) {
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState<string | null>(null)
   const [preview, setPreview]   = useState<{ name: string; pagirId: string } | null>(null)
+  const [showScanner, setShowScanner] = useState(false)
+  const [scanError, setScanError]     = useState<string | null>(null)
+
+  const { hasPermission, requestPermission } = useCameraPermission()
+  const device = useCameraDevice('back')
 
   const isIdValid = isValidPagirId(pagirId.trim().toUpperCase())
+
+  // ── QR code scanner ──────────────────────────────────────────────────────────
+
+  const codeScanner = useCodeScanner({
+    codeTypes: ['qr'],
+    onCodeScanned: (codes) => {
+      const raw = codes[0]?.value
+      if (!raw) return
+
+      // Try pagir2:// bundle first
+      const stripped = raw.replace(/^pagir2?:\/\//i, '').trim()
+      const decoded = decodePagirBundle(stripped)
+      if (decoded && isValidPagirId(decoded.pagirId)) {
+        setShowScanner(false)
+        setScanError(null)
+        setPagirId(decoded.pagirId)
+        setPreview(null)
+        setError(null)
+        return
+      }
+
+      // Try raw PAGIR ID
+      const upper = raw.trim().toUpperCase()
+      if (isValidPagirId(upper)) {
+        setShowScanner(false)
+        setScanError(null)
+        setPagirId(upper)
+        setPreview(null)
+        setError(null)
+        return
+      }
+
+      setScanError('QR code is not a valid PAGIR identity. Ask your contact to share their PAGIR QR code.')
+    },
+  })
+
+  const handleOpenCamera = useCallback(async () => {
+    setScanError(null)
+    if (!hasPermission) {
+      const granted = await requestPermission()
+      if (!granted) {
+        Alert.alert(
+          'Camera permission required',
+          'Please allow camera access in your device settings to scan PAGIR QR codes.',
+          [{ text: 'OK' }]
+        )
+        return
+      }
+    }
+    if (!device) {
+      Alert.alert('Camera not available', 'No back camera found on this device.')
+      return
+    }
+    setShowScanner(true)
+  }, [hasPermission, requestPermission, device])
+
+  // ── Other handlers ───────────────────────────────────────────────────────────
 
   const handlePaste = useCallback(async () => {
     const text = await Clipboard.getString()
@@ -60,12 +123,14 @@ export default function AddContactScreen({ navigation }: Props) {
 
     try {
       const profile = await apiClient.lookupUser(id)
+      if (!profile) {
+        setError('No PAGIR user found with that ID.')
+        return
+      }
       setPreview({ name: profile.displayName ?? profile.pagirId, pagirId: profile.pagirId })
     } catch (err: any) {
       const msg = (err?.message ?? '').toLowerCase()
-      if (msg.includes('not found') || msg.includes('404')) {
-        setError('No PAGIR user found with that ID.')
-      } else if (msg.includes('network') || msg.includes('fetch')) {
+      if (msg.includes('network') || msg.includes('fetch')) {
         setError('No connection. Check your internet and try again.')
       } else {
         setError(err?.message ?? 'Failed to look up user.')
@@ -81,6 +146,7 @@ export default function AddContactScreen({ navigation }: Props) {
     setLoading(true)
     try {
       const profile = await apiClient.lookupUser(preview.pagirId)
+      if (!profile) throw new Error('User not found')
       await contactStore.add({
         pagirId:      profile.pagirId,
         displayName:  profile.displayName ?? profile.pagirId,
@@ -95,6 +161,8 @@ export default function AddContactScreen({ navigation }: Props) {
       setLoading(false)
     }
   }, [preview, nickname, navigation])
+
+  // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
     <KeyboardAvoidingView style={S.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -204,15 +272,64 @@ export default function AddContactScreen({ navigation }: Props) {
           <Text style={S.qrIcon}>▦</Text>
           <Text style={S.qrText}>QR scanner</Text>
           <Text style={S.qrSub}>Scan a contact's PAGIR code to add them instantly</Text>
-          <TouchableOpacity style={S.qrBtn} onPress={() => Alert.alert('Coming soon', 'QR scanning requires camera permission — available in next build.')}>
+          <TouchableOpacity style={S.qrBtn} onPress={handleOpenCamera}>
             <Text style={S.qrBtnText}>Open Camera</Text>
           </TouchableOpacity>
         </View>
 
       </ScrollView>
+
+      {/* Camera scanner modal */}
+      <Modal
+        visible={showScanner}
+        animationType="slide"
+        onRequestClose={() => setShowScanner(false)}
+      >
+        <View style={S.scannerContainer}>
+          {device ? (
+            <Camera
+              style={StyleSheet.absoluteFill}
+              device={device}
+              isActive={showScanner}
+              codeScanner={codeScanner}
+            />
+          ) : null}
+
+          {/* Scan overlay */}
+          <View style={S.scanOverlay}>
+            <View style={S.scanTopBar}>
+              <TouchableOpacity style={S.scanClose} onPress={() => setShowScanner(false)}>
+                <Text style={S.scanCloseText}>✕ Close</Text>
+              </TouchableOpacity>
+              <Text style={S.scanTitle}>Scan PAGIR QR Code</Text>
+              <View style={{ width: 80 }} />
+            </View>
+
+            <View style={S.scanFrame}>
+              <View style={[S.scanCorner, S.scanCornerTL]} />
+              <View style={[S.scanCorner, S.scanCornerTR]} />
+              <View style={[S.scanCorner, S.scanCornerBL]} />
+              <View style={[S.scanCorner, S.scanCornerBR]} />
+            </View>
+
+            <Text style={S.scanHint}>Point camera at a PAGIR QR code</Text>
+
+            {scanError && (
+              <View style={S.scanErrorBox}>
+                <Text style={S.scanErrorText}>{scanError}</Text>
+                <TouchableOpacity onPress={() => setScanError(null)}>
+                  <Text style={S.scanErrorDismiss}>Dismiss</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   )
 }
+
+const CORNER = 24
 
 const S = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
@@ -259,4 +376,29 @@ const S = StyleSheet.create({
   qrSub:         { fontSize: 13, color: Colors.textMuted, textAlign: 'center', lineHeight: 18 },
   qrBtn:         { marginTop: 8, paddingHorizontal: Spacing.lg, paddingVertical: 12, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.primary },
   qrBtnText:     { fontSize: 14, color: Colors.primary, fontWeight: '600' },
+
+  // Scanner modal
+  scannerContainer: { flex: 1, backgroundColor: '#000' },
+  scanOverlay:      { ...StyleSheet.absoluteFillObject, justifyContent: 'space-between' },
+  scanTopBar:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: Platform.OS === 'ios' ? 56 : 20, paddingHorizontal: 20, paddingBottom: 16, backgroundColor: 'rgba(0,0,0,0.6)' },
+  scanClose:        { paddingHorizontal: 12, paddingVertical: 8 },
+  scanCloseText:    { fontSize: 15, color: '#fff', fontWeight: '600' },
+  scanTitle:        { fontSize: 16, color: '#fff', fontWeight: '700' },
+
+  scanFrame: {
+    width: 260, height: 260,
+    alignSelf: 'center',
+    position: 'relative',
+  },
+  scanCorner:   { position: 'absolute', width: CORNER, height: CORNER, borderColor: Colors.primary, borderWidth: 3 },
+  scanCornerTL: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0 },
+  scanCornerTR: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0 },
+  scanCornerBL: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0 },
+  scanCornerBR: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0 },
+
+  scanHint: { textAlign: 'center', color: '#fff', fontSize: 14, paddingHorizontal: 32, paddingBottom: 40, backgroundColor: 'rgba(0,0,0,0)', textShadowColor: '#000', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
+
+  scanErrorBox:    { margin: 20, backgroundColor: Colors.dangerBg, borderRadius: Radius.md, padding: 16, borderWidth: 1, borderColor: Colors.danger, alignItems: 'center', gap: 8 },
+  scanErrorText:   { color: Colors.danger, fontSize: 13, textAlign: 'center', lineHeight: 18 },
+  scanErrorDismiss:{ color: Colors.primary, fontSize: 13, fontWeight: '600' },
 })

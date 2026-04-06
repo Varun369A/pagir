@@ -45,9 +45,9 @@ export default function ShareIdentityScreen({ navigation }: Props) {
       if (!identity) return
 
       setPagirId(identity.pagirId)
-      const uri = encodePagirBundle(identity.pagirId, identity.publicKey)
-      setBundle(uri)
-      setShareText(pagirBundleToShareText(identity.pagirId, identity.publicKey))
+      const encoded = encodePagirBundle(identity.pagirId, identity.publicKey)
+      setBundle(encoded)
+      setShareText(pagirBundleToShareText(encoded))
     } finally {
       setLoading(false)
     }
