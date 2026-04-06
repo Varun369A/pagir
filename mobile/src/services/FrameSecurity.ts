@@ -30,9 +30,7 @@ import { encodeFrame, decodeFrame, FrameFlag, newFrameId, frameIdToHex, HEADER_S
 import type { FrameHeader, FrameType, EncodedFrame } from './FrameCodec'
 import { identityManager } from './IdentityManager'
 
-let crypto: any
-try { crypto = require('react-native-quick-crypto') }
-catch { crypto = require('crypto') }
+const crypto: any = require('react-native-quick-crypto')
 
 // ─── Replay Guard (LRU cache) ─────────────────────────────────────────────────
 

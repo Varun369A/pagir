@@ -5,12 +5,7 @@
  * Server only validates, never generates.
  */
 
-let crypto: any
-try {
-  crypto = require('react-native-quick-crypto')
-} catch {
-  crypto = require('crypto')
-}
+const crypto: any = require('react-native-quick-crypto')
 
 // 32-char unambiguous alphabet (no 0/O/1/I/L)
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'

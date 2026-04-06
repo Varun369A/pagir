@@ -228,9 +228,7 @@ export function decodeFrame(raw: Uint8Array): EncodedFrame | null {
 
 export function newFrameId(): Uint8Array {
   const id = new Uint8Array(16)
-  let crypto: any
-  try { crypto = require('react-native-quick-crypto') }
-  catch { crypto = require('crypto') }
+  const crypto: any = require('react-native-quick-crypto')
   const rand = crypto.randomBytes(16)
   id.set(rand)
   return id

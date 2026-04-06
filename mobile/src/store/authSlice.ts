@@ -153,13 +153,8 @@ async function _getDeviceFingerprint(): Promise<string> {
   } catch {}
 
   // Generate a stable device fingerprint from random bytes (per-install)
-  let crypto: any
-  try {
-    crypto = require('react-native-quick-crypto')
-  } catch {
-    crypto = require('crypto')
-  }
-  const fp = crypto.randomBytes(32).toString('hex')
+  const cryptoLib: any = require('react-native-quick-crypto')
+  const fp = cryptoLib.randomBytes(32).toString('hex')
   await AsyncStorage.setItem('pagir2:device_fingerprint', fp).catch(() => {})
   return fp
 }

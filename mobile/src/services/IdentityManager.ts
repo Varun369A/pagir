@@ -26,7 +26,7 @@ import * as Keychain from 'react-native-keychain'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { generatePagirId, isValidPagirId } from '../utils/pagirId'
 import { generateKeyPair, derivePublicKey } from '../utils/crypto'
-import { logger } from './Logger'
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 
 // ─── Keychain service names ───────────────────────────────────────────────────
 
@@ -332,7 +332,6 @@ function _decodeJwt(token: string): { sub?: string } | null {
 
 export const identityManager = new IdentityManager()
 
-// Simple logger wrapper (avoids circular imports)
 const logger = {
   info: (...args: unknown[]) => console.log('[IdentityManager]', ...args),
   warn: (...args: unknown[]) => console.warn('[IdentityManager]', ...args),

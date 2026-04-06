@@ -9,12 +9,8 @@
  *   Session key:  RSA-OAEP (2048-bit) encrypted with recipient's public key
  */
 
-let crypto: any
-try {
-  crypto = require('react-native-quick-crypto')
-} catch {
-  crypto = require('crypto')
-}
+// React Native — always use the native OpenSSL-backed crypto module
+const crypto: any = require('react-native-quick-crypto')
 
 export interface EncryptedPayload {
   ciphertext: string  // base64 AES-256-GCM ciphertext + 16-byte auth tag appended

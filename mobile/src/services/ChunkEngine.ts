@@ -30,9 +30,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { FrameType, FrameFlag, CHUNK_SIZE } from './FrameCodec'
 import type { FileMetaPayload, ChunkPayload } from './FrameCodec'
 
-let crypto: any
-try { crypto = require('react-native-quick-crypto') }
-catch { crypto = require('crypto') }
+const crypto: any = require('react-native-quick-crypto')
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
