@@ -1,0 +1,170 @@
+// PAGIR 2 — Directory service schema.
+//
+// Privacy model:
+//   - Phone number stored as HMAC-SHA256(phone, SERVER_SECRET) — never recoverable
+//   - Public key stored in plaintext (it is public by definition)
+//   - Transfer sessions are ephemeral — deleted on delivery or expiry
+//   - Profile photos NOT stored — transferred P2P only
+//   - Message content NEVER stored — relay only
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── User ────────────────────────────────────────────────────────────────────
+model User {
+  id                String   @id @db.VarChar(20)
+
+  // Phone stored as two hashes:
+  //   stablePhoneHash — deterministic per phone + server secret (O(1) login)
+  //   phoneHash       — random-salted per OTP session (per-record privacy)
+  stablePhoneHash   String?  @unique @map("stable_phone_hash") @db.VarChar(64)
+  phoneHash         String   @unique @map("phone_hash") @db.VarChar(64)
+  phoneSalt         String   @map("phone_salt") @db.VarChar(32)
+
+  email             String?  @map("email") @db.VarChar(254)
+  displayName       String   @map("display_name") @db.VarChar(100)
+
+  // RSA-2048 public key PEM — the phonebook's core value
+  publicKey         String   @map("public_key_pem") @db.Text
+  // Key version — increments on every key rotation (emergency wipe creates new user record)
+  keyVersion        Int      @default(1) @map("key_version")
+
+  deviceFingerprint String   @map("device_fingerprint") @db.VarChar(64)
+
+  isActive          Boolean  @default(true) @map("is_active")
+  isOnline          Boolean  @default(false) @map("is_online")
+  lastSeen          DateTime? @map("last_seen")
+
+  revokedAt         DateTime? @map("revoked_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  sentRequests      FriendRequest[]   @relation("SentRequests")
+  receivedRequests  FriendRequest[]   @relation("ReceivedRequests")
+  friendshipsAsA    Friendship[]      @relation("FriendshipUserA")
+  friendshipsAsB    Friendship[]      @relation("FriendshipUserB")
+  sentTransfers     TransferSession[] @relation("SentTransfers")
+  receivedTransfers TransferSession[] @relation("ReceivedTransfers")
+  deviceTokens      DeviceToken[]
+
+  @@index([stablePhoneHash])
+  @@index([email])
+  @@map("users")
+}
+
+// ─── OTP Session ─────────────────────────────────────────────────────────────
+model OtpSession {
+  id          String   @id @default(uuid()) @db.Uuid
+  phoneHash   String   @map("phone_hash") @db.VarChar(64)
+  otpHash     String   @map("otp_hash") @db.VarChar(60)
+  attempts    Int      @default(0)
+  maxAttempts Int      @default(3) @map("max_attempts")
+  expiresAt   DateTime @map("expires_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  ipAddress   String   @map("ip_address") @db.VarChar(45)
+
+  // No FK to User — OTP sessions exist before user creation
+  @@index([phoneHash, expiresAt])
+  @@map("otp_sessions")
+}
+
+// ─── Friend Request ───────────────────────────────────────────────────────────
+model FriendRequest {
+  id         String              @id @default(uuid()) @db.Uuid
+  senderId   String              @map("sender_id") @db.VarChar(20)
+  receiverId String              @map("receiver_id") @db.VarChar(20)
+  status     FriendRequestStatus @default(PENDING)
+  createdAt  DateTime            @default(now()) @map("created_at")
+  updatedAt  DateTime            @updatedAt @map("updated_at")
+
+  sender   User @relation("SentRequests", fields: [senderId], references: [id])
+  receiver User @relation("ReceivedRequests", fields: [receiverId], references: [id])
+
+  @@unique([senderId, receiverId])
+  @@index([receiverId, status])
+  @@map("friend_requests")
+}
+
+enum FriendRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  BLOCKED
+}
+
+// ─── Friendship ───────────────────────────────────────────────────────────────
+model Friendship {
+  id        String   @id @default(uuid()) @db.Uuid
+  userAId   String   @map("user_a_id") @db.VarChar(20)
+  userBId   String   @map("user_b_id") @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  userA User @relation("FriendshipUserA", fields: [userAId], references: [id])
+  userB User @relation("FriendshipUserB", fields: [userBId], references: [id])
+
+  @@unique([userAId, userBId])
+  @@index([userAId])
+  @@index([userBId])
+  @@map("friendships")
+}
+
+// ─── Transfer Session ─────────────────────────────────────────────────────────
+// Ephemeral — deleted on delivery or when purgeAfter expires.
+// Server only stores encryptedSessionKey for offline delivery.
+// Cannot decrypt without receiver's RSA private key.
+model TransferSession {
+  id                  String         @id @default(uuid()) @db.Uuid
+  senderId            String         @map("sender_id") @db.VarChar(20)
+  receiverId          String         @map("receiver_id") @db.VarChar(20)
+  fileNameHash        String         @map("file_name_hash") @db.VarChar(64)
+  fileSizeBytes       BigInt         @map("file_size_bytes")
+  totalFragments      Int            @map("total_fragments")
+  encryptedSessionKey String?        @map("encrypted_session_key") @db.Text
+  status              TransferStatus @default(PENDING)
+  transmissionMode    String         @default("RELAY") @map("transmission_mode") @db.VarChar(32)
+  purgeAfter          DateTime       @map("purge_after")
+  createdAt           DateTime       @default(now()) @map("created_at")
+
+  sender   User @relation("SentTransfers", fields: [senderId], references: [id])
+  receiver User @relation("ReceivedTransfers", fields: [receiverId], references: [id])
+
+  @@index([receiverId, status])
+  @@index([purgeAfter])
+  @@map("transfer_sessions")
+}
+
+enum TransferStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  COMPLETED
+  FAILED
+}
+
+// ─── Device Token ─────────────────────────────────────────────────────────────
+model DeviceToken {
+  id        String         @id @default(uuid()) @db.Uuid
+  userId    String         @map("user_id") @db.VarChar(20)
+  token     String         @db.VarChar(4096)
+  platform  DevicePlatform
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, platform])
+  @@map("device_tokens")
+}
+
+enum DevicePlatform {
+  ANDROID
+  IOS
+}

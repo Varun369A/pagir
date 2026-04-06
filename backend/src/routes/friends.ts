@@ -1,0 +1,194 @@
+/**
+ * PAGIR 2 — Friends Routes
+ *
+ * Server-side friend graph is optional and minimal.
+ * PAGIR contacts are primarily local (ContactStore SQLite).
+ * Server friend records exist only for:
+ *   - Push notification routing ("notify B that A wants to connect")
+ *   - Public key verification ("confirm B's key hasn't changed")
+ *   - Block list enforcement (global block — not just local)
+ *
+ * Routes:
+ *   POST   /friends/request      — send friend request
+ *   GET    /friends              — list accepted friends
+ *   POST   /friends/:id/accept   — accept request
+ *   POST   /friends/:id/reject   — reject request
+ *   DELETE /friends/:id          — remove friend
+ *   POST   /friends/:id/block    — global block
+ */
+
+import type { FastifyInstance } from 'fastify'
+import { z } from 'zod'
+import { authenticate } from '../plugins/auth'
+import { db } from '../config/database'
+import { AppError } from '../plugins/errorHandler'
+import { userRepo } from '../repositories/userRepo'
+import logger from '../utils/logger'
+
+const SendRequestBody = z.object({
+  receiverId: z.string().min(15).max(20),
+  message:    z.string().max(200).optional(),
+})
+
+export async function friendsRoutes(app: FastifyInstance) {
+
+  // ─── Send friend request ───────────────────────────────────────────────────
+  app.post('/friends/request', { preHandler: authenticate }, async (request: any, reply) => {
+    const body = SendRequestBody.parse(request.body)
+    const senderId = request.user.pagirId
+
+    if (senderId === body.receiverId) {
+      throw AppError.badRequest('Cannot add yourself', 'SELF_FRIEND_REQUEST')
+    }
+
+    const receiver = await userRepo.findActiveById(body.receiverId)
+    if (!receiver) throw AppError.notFound('User not found', 'USER_NOT_FOUND')
+
+    // Check for existing request/friendship
+    const existing = await db.friendRequest.findFirst({
+      where: {
+        OR: [
+          { senderId, receiverId: body.receiverId },
+          { senderId: body.receiverId, receiverId: senderId },
+        ],
+      },
+    })
+
+    if (existing?.status === 'ACCEPTED') {
+      throw AppError.badRequest('Already friends', 'ALREADY_FRIENDS')
+    }
+
+    if (existing?.status === 'PENDING') {
+      throw AppError.badRequest('Request already sent', 'REQUEST_PENDING')
+    }
+
+    if (existing?.status === 'BLOCKED') {
+      throw AppError.forbidden('Blocked', 'BLOCKED')
+    }
+
+    const req = await db.friendRequest.create({
+      data: { senderId, receiverId: body.receiverId, status: 'PENDING' },
+    })
+
+    logger.info({ senderId, receiverId: body.receiverId }, 'friend request sent')
+    return reply.status(201).send({ success: true, requestId: req.id })
+  })
+
+  // ─── List friends ─────────────────────────────────────────────────────────
+  app.get('/friends', { preHandler: authenticate }, async (request: any, reply) => {
+    const pagirId = request.user.pagirId
+
+    const friendships = await db.friendship.findMany({
+      where: { OR: [{ userAId: pagirId }, { userBId: pagirId }] },
+    })
+
+    const friendIds = friendships.map(f =>
+      f.userAId === pagirId ? f.userBId : f.userAId
+    )
+
+    const friends = await Promise.all(friendIds.map(id => userRepo.getPublicProfile(id)))
+    return reply.send({ success: true, friends: friends.filter(Boolean) })
+  })
+
+  // ─── List pending requests ────────────────────────────────────────────────
+  app.get('/friends/requests', { preHandler: authenticate }, async (request: any, reply) => {
+    const pagirId = request.user.pagirId
+
+    const pending = await db.friendRequest.findMany({
+      where: { receiverId: pagirId, status: 'PENDING' },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    const withProfiles = await Promise.all(pending.map(async r => ({
+      requestId: r.id,
+      sender: await userRepo.getPublicProfile(r.senderId),
+      createdAt: r.createdAt,
+    })))
+
+    return reply.send({ success: true, requests: withProfiles })
+  })
+
+  // ─── Accept request ───────────────────────────────────────────────────────
+  app.post('/friends/:id/accept', { preHandler: authenticate }, async (request: any, reply) => {
+    const { id } = request.params as { id: string }
+    const pagirId = request.user.pagirId
+
+    const req = await db.friendRequest.findFirst({
+      where: { id, receiverId: pagirId, status: 'PENDING' },
+    })
+    if (!req) throw AppError.notFound('Request not found', 'REQUEST_NOT_FOUND')
+
+    await db.$transaction([
+      db.friendRequest.update({ where: { id }, data: { status: 'ACCEPTED' } }),
+      db.friendship.create({
+        data: {
+          userAId: req.senderId < pagirId ? req.senderId : pagirId,
+          userBId: req.senderId < pagirId ? pagirId : req.senderId,
+        },
+      }),
+    ])
+
+    logger.info({ pagirId, friendId: req.senderId }, 'friend request accepted')
+    return reply.send({ success: true })
+  })
+
+  // ─── Reject request ───────────────────────────────────────────────────────
+  app.post('/friends/:id/reject', { preHandler: authenticate }, async (request: any, reply) => {
+    const { id } = request.params as { id: string }
+    const pagirId = request.user.pagirId
+
+    await db.friendRequest.updateMany({
+      where: { id, receiverId: pagirId, status: 'PENDING' },
+      data:  { status: 'REJECTED' },
+    })
+
+    return reply.send({ success: true })
+  })
+
+  // ─── Remove friend ────────────────────────────────────────────────────────
+  app.delete('/friends/:friendId', { preHandler: authenticate }, async (request: any, reply) => {
+    const { friendId } = request.params as { friendId: string }
+    const pagirId = request.user.pagirId
+
+    await db.$transaction([
+      db.friendship.deleteMany({
+        where: { OR: [
+          { userAId: pagirId, userBId: friendId },
+          { userAId: friendId, userBId: pagirId },
+        ]},
+      }),
+      db.friendRequest.deleteMany({
+        where: { OR: [
+          { senderId: pagirId, receiverId: friendId },
+          { senderId: friendId, receiverId: pagirId },
+        ]},
+      }),
+    ])
+
+    return reply.send({ success: true })
+  })
+
+  // ─── Block user ───────────────────────────────────────────────────────────
+  app.post('/friends/:friendId/block', { preHandler: authenticate }, async (request: any, reply) => {
+    const { friendId } = request.params as { friendId: string }
+    const pagirId = request.user.pagirId
+
+    await db.$transaction([
+      // Remove friendship
+      db.friendship.deleteMany({
+        where: { OR: [
+          { userAId: pagirId, userBId: friendId },
+          { userAId: friendId, userBId: pagirId },
+        ]},
+      }),
+      // Block via friend request record
+      db.friendRequest.upsert({
+        where: { id: `block-${pagirId}-${friendId}` },
+        update: { status: 'BLOCKED' },
+        create: { id: `block-${pagirId}-${friendId}`, senderId: pagirId, receiverId: friendId, status: 'BLOCKED' },
+      }),
+    ])
+
+    return reply.send({ success: true })
+  })
+}

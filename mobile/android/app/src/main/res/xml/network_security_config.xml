@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PAGIR 2 — Network Security Config
+     Production: HTTPS only, certificate pinning for pagir.app
+     No cleartext traffic allowed (already set in manifest) -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">pagir.app</domain>
+        <domain includeSubdomains="true">aarionlabs.com</domain>
+    </domain-config>
+    <!-- Allow localhost for dev -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>

@@ -1,0 +1,47 @@
+{
+  "name": "@pagir2/backend",
+  "version": "2.0.0",
+  "description": "PAGIR 2 — Zero-knowledge P2P transfer backend",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:studio": "prisma studio",
+    "db:push": "prisma db push --force-reset",
+    "db:wipe": "tsx src/scripts/wipeDatabase.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@fastify/cors": "^9.0.1",
+    "@fastify/helmet": "^11.1.1",
+    "@fastify/websocket": "^8.3.0",
+    "@prisma/client": "^5.11.0",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5",
+    "fastify": "^5.1.0",
+    "ioredis": "^5.3.2",
+    "jsonwebtoken": "^9.0.2",
+    "pino": "^9.0.0",
+    "pino-pretty": "^11.0.0",
+    "resend": "^3.2.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/ioredis": "^4.28.10",
+    "@types/jsonwebtoken": "^9.0.6",
+    "@types/node": "^20.11.0",
+    "prisma": "^5.11.0",
+    "tsx": "^4.7.1",
+    "typescript": "^5.4.2",
+    "vitest": "^1.4.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
