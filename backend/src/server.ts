@@ -70,7 +70,14 @@ async function build() {
   // ─── Health check ─────────────────────────────────────────────────────────
 
   app.get('/health', async (_req, reply) => {
-    return reply.status(200).send({ status: 'ok', service: 'pagir2-backend', ts: Date.now() })
+    return reply.status(200).send({
+      status:   'ok',
+      service:  'pagir2-backend',
+      protocol: 'TARANG/1.0 (Trustless Ad-hoc Relay And Node Grid)',
+      version:  '2.0.0',
+      env:      env.NODE_ENV,
+      ts:       Date.now(),
+    })
   })
 
   // ─── API routes ───────────────────────────────────────────────────────────

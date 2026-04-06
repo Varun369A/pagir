@@ -14,8 +14,8 @@ import { Platform } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
 const BASE_URL = __DEV__
-  ? 'http://10.0.2.2:3000/api/v2'     // Android emulator → host machine port 3000
-  : 'https://pagir.app/api/v2'
+  ? 'http://10.0.2.2:3000/api/v2'                              // Android emulator → local
+  : 'https://pagir2backend-production.up.railway.app/api/v2'   // Railway production
 
 const AS_ACCESS_TOKEN  = 'pagir2:access_token'
 const AS_REFRESH_TOKEN = 'pagir2:refresh_token'

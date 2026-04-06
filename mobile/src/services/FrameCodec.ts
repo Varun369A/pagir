@@ -1,31 +1,38 @@
 /**
- * PAGIR 2 — Frame Codec
+ * PAGIR 2 — Frame Codec (TARANG Protocol Wire Format)
  *
- * Binary wire format for ALL PAGIR transmissions (BLE, WiFi Direct, TCP, WebSocket).
- * Every message and file chunk uses this exact frame layout.
+ * Implements the TARANG/1.0 (Trustless Ad-hoc Relay And Node Grid) binary
+ * wire format for ALL PAGIR transmissions: BLE, WiFi Direct, TCP, WebSocket.
+ *
+ * See TarangProtocol.ts for the full protocol specification.
  *
  * FRAME LAYOUT (fixed 72-byte header + variable payload + 256-byte signature):
  *
  * Offset  Size  Field
- * ──────────────────────────────────────────────────────────────
- *  0       4    MAGIC        0x50 0x41 0x47 0x52  ("PAGR")
- *  4       1    VERSION      0x02
- *  5       1    TYPE         FrameType enum
- *  6       1    FLAGS        FrameFlags bit field
- *  7       1    TTL          0–255 hop limit
- *  8      16    FRAME_ID     random 16 bytes (UUID) — anti-replay key
- * 24      16    SENDER_ID    PAGIR ID bytes (dashes stripped, 16 ASCII bytes)
- * 40      16    RECEIVER_ID  PAGIR ID bytes
- * 56       4    PAYLOAD_LEN  uint32 big-endian
- * 60       8    TIMESTAMP    uint64 big-endian ms since epoch
- * 68       4    HEADER_CRC   CRC32 of bytes 0–67
- * ──────────────────────────────────────────────────────────────
- * 72       N    PAYLOAD      AES-256-GCM encrypted bytes (see PayloadType)
- * 72+N   256    SIGNATURE    RSA-2048 PKCS#1v2.1 SHA-256 of bytes 0–(72+N-1)
+ * ──────────────────────────────────────────────────────────────────────────
+ *  0       4    MAGIC        0x50 0x41 0x47 0x52  ("PAGR") — protocol marker
+ *  4       1    VERSION      0x02                 — TARANG/1.0 over PAGIR/2
+ *  5       1    TYPE         FrameType enum       — message class
+ *  6       1    FLAGS        FrameFlag bit field  — FORWARD/ENCRYPT/SIGN etc
+ *  7       1    TTL          0–64 hop limit       — decremented at each relay
+ *  8      16    FRAME_ID     random 128-bit       — anti-replay unique ID
+ * 24      16    SENDER_ID    PAGIR ID (16 bytes)  — ASCII, dashes stripped
+ * 40      16    RECEIVER_ID  PAGIR ID (16 bytes)  — 0xFF×16 = broadcast
+ * 56       4    PAYLOAD_LEN  uint32 big-endian    — encrypted payload bytes
+ * 60       8    TIMESTAMP    uint64 big-endian    — ms epoch (±5min window)
+ * 68       4    HEADER_CRC   CRC32(bytes 0–67)    — integrity check
+ * ──────────────────────────────────────────────────────────────────────────
+ * 72       N    PAYLOAD      AES-256-GCM ciphertext (12-byte nonce prepended)
+ *                            + 16-byte GCM auth tag appended
+ *                            + 256-byte RSA-OAEP encrypted session key
+ * 72+N   256    SIGNATURE    RSA-2048 PSS SHA-256 over bytes 0–(72+N-1)
+ * ──────────────────────────────────────────────────────────────────────────
  *
- * Total minimum frame: 72 + 0 + 256 = 328 bytes
- * BLE advertising mode: payload capped at 183 bytes (fits BLE 5 extended adv)
- * WiFi Direct mode: payload up to 65536 bytes per frame (64KB chunk)
+ * Security:  10-layer (see TarangProtocol.ts TARANG_SECURITY)
+ * Anti-reverse: Hermes bytecode + ProGuard R8 in release APK
+ * Minimum frame: 328 bytes (header 72 + sig 256)
+ * BLE limit: payload ≤ 183 bytes (BLE 5.0 extended advertising)
+ * WiFi Direct: payload up to 64KB per frame
  */
 
 export const MAGIC = new Uint8Array([0x50, 0x41, 0x47, 0x52]) // "PAGR"
