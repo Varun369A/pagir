@@ -1,18 +1,9 @@
 {
   "name": "pagir2",
   "private": true,
-  "workspaces": [
-    "backend",
-    "mobile"
-  ],
   "scripts": {
-    "backend:dev": "npm --workspace=backend run dev",
-    "backend:build": "npm --workspace=backend run build",
-    "backend:start": "npm --workspace=backend run start",
-    "mobile:android": "npm --workspace=mobile run android",
-    "mobile:ios": "npm --workspace=mobile run ios",
-    "db:generate": "npm --workspace=backend run db:generate",
-    "db:migrate": "npm --workspace=backend run db:migrate"
+    "build": "npm install --prefix backend && npx prisma generate --prefix backend && npm run build --prefix backend",
+    "start": "node backend/dist/server.js"
   },
   "overrides": {
     "react-native-screens": "3.29.0",
@@ -25,5 +16,8 @@
   },
   "devDependencies": {
     "canvas": "^3.2.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }
