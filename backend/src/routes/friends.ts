@@ -87,8 +87,9 @@ export async function friendsRoutes(app: FastifyInstance) {
       f.userAId === pagirId ? f.userBId : f.userAId
     )
 
-    const friends = await Promise.all(friendIds.map(id => userRepo.getPublicProfile(id)))
-    return reply.send({ success: true, friends: friends.filter(Boolean) })
+    const profiles = await Promise.all(friendIds.map(id => userRepo.getPublicProfile(id)))
+    const friends = profiles.filter(Boolean).map(p => ({ pagirId: p!.id, displayName: p!.displayName, publicKey: p!.publicKey }))
+    return reply.send({ success: true, friends })
   })
 
   // ─── List pending requests ────────────────────────────────────────────────
@@ -100,11 +101,14 @@ export async function friendsRoutes(app: FastifyInstance) {
       orderBy: { createdAt: 'desc' },
     })
 
-    const withProfiles = await Promise.all(pending.map(async r => ({
-      requestId: r.id,
-      sender: await userRepo.getPublicProfile(r.senderId),
-      createdAt: r.createdAt,
-    })))
+    const withProfiles = await Promise.all(pending.map(async r => {
+      const p = await userRepo.getPublicProfile(r.senderId)
+      return {
+        requestId: r.id,
+        sender: p ? { pagirId: p.id, displayName: p.displayName, publicKey: p.publicKey } : null,
+        createdAt: r.createdAt,
+      }
+    }))
 
     return reply.send({ success: true, requests: withProfiles })
   })
