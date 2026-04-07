@@ -38,3 +38,6 @@ Thumbs.db
 *.pem
 *.key
 *.p12
+
+# Test credentials (tokens — never commit)
+.test-creds.json
