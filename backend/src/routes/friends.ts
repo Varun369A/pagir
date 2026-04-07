@@ -155,20 +155,18 @@ export async function friendsRoutes(app: FastifyInstance) {
     const { friendId } = request.params as { friendId: string }
     const pagirId = request.user.pagirId
 
-    await db.$transaction([
-      db.friendship.deleteMany({
-        where: { OR: [
-          { userAId: pagirId, userBId: friendId },
-          { userAId: friendId, userBId: pagirId },
-        ]},
-      }),
-      db.friendRequest.deleteMany({
-        where: { OR: [
-          { senderId: pagirId, receiverId: friendId },
-          { senderId: friendId, receiverId: pagirId },
-        ]},
-      }),
-    ])
+    await db.friendship.deleteMany({
+      where: { OR: [
+        { userAId: pagirId, userBId: friendId },
+        { userAId: friendId, userBId: pagirId },
+      ]},
+    })
+    await db.friendRequest.deleteMany({
+      where: { OR: [
+        { senderId: pagirId, receiverId: friendId },
+        { senderId: friendId, receiverId: pagirId },
+      ]},
+    })
 
     return reply.send({ success: true })
   })

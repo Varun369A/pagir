@@ -6,6 +6,7 @@
  * This makes it trivial to add caching, tracing, or swap databases later.
  */
 
+import crypto from 'crypto'
 import type { User } from '@prisma/client'
 import { db } from '../config/database'
 
@@ -88,11 +89,13 @@ export const userRepo = {
   async revoke(id: string): Promise<void> {
     const user = await db.user.findUnique({ where: { id }, select: { phoneHash: true } })
     if (!user) return
+    // SHA256 of original hash + revoke marker = always 64 hex chars (fits VarChar(64))
+    const revokedHash = crypto.createHash('sha256').update(user.phoneHash + ':revoked:' + id).digest('hex')
     await db.user.update({
       where: { id },
       data: {
         revokedAt: new Date(),
-        phoneHash: user.phoneHash + ':revoked:' + id.slice(-8),
+        phoneHash: revokedHash,
         stablePhoneHash: null,
       },
     })
@@ -102,11 +105,13 @@ export const userRepo = {
   async revokeWithSuffix(id: string, suffix: string): Promise<void> {
     const user = await db.user.findUnique({ where: { id }, select: { phoneHash: true } })
     if (!user) return
+    // SHA256 of original hash + revoke marker = always 64 hex chars (fits VarChar(64))
+    const revokedHash = crypto.createHash('sha256').update(user.phoneHash + ':revoked:' + suffix).digest('hex')
     await db.user.update({
       where: { id },
       data: {
         revokedAt: new Date(),
-        phoneHash: user.phoneHash + ':revoked:' + suffix,
+        phoneHash: revokedHash,
         stablePhoneHash: null,
       },
     })
@@ -114,12 +119,10 @@ export const userRepo = {
 
   async hardDelete(id: string): Promise<void> {
     // Delete related records first (FK constraints), then user
-    await db.$transaction([
-      db.deviceToken.deleteMany({ where: { userId: id } }),
-      db.friendRequest.deleteMany({ where: { OR: [{ senderId: id }, { receiverId: id }] } }),
-      db.friendship.deleteMany({ where: { OR: [{ userAId: id }, { userBId: id }] } }),
-      db.transferSession.deleteMany({ where: { OR: [{ senderId: id }, { receiverId: id }] } }),
-      db.user.delete({ where: { id } }),
-    ])
+    await db.deviceToken.deleteMany({ where: { userId: id } })
+    await db.friendRequest.deleteMany({ where: { OR: [{ senderId: id }, { receiverId: id }] } })
+    await db.friendship.deleteMany({ where: { OR: [{ userAId: id }, { userBId: id }] } })
+    await db.transferSession.deleteMany({ where: { OR: [{ senderId: id }, { receiverId: id }] } })
+    await db.user.delete({ where: { id } })
   },
 }
