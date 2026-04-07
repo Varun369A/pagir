@@ -73,8 +73,9 @@ class IdentityManager {
   // ── PAGIR ID ───────────────────────────────────────────────────────────────
 
   async getPagirId(): Promise<string | null> {
-    // T1: Memory
-    if (this._pagirId) return this._pagirId
+    // T1: Memory (validate before trusting — could be stale/corrupt)
+    if (this._pagirId && isValidPagirId(this._pagirId)) return this._pagirId
+    if (this._pagirId) this._pagirId = null  // clear invalid cached value
 
     // T2: Keychain full identity bundle
     try {
@@ -238,11 +239,13 @@ class IdentityManager {
 
     // Generate fresh identity
     try {
-      const pagirId = generatePagirId()
+      let pagirId = generatePagirId()
+      // Defensive: regenerate if somehow invalid (shouldn't happen after % 31 fix)
+      if (!isValidPagirId(pagirId)) pagirId = generatePagirId()
       const { publicKey, privateKey } = await generateKeyPair()
-      this._pagirId = pagirId
       await this.storeKeyPair(publicKey, privateKey)
-      await this.storePagirId(pagirId)
+      await this.storePagirId(pagirId)  // validates before setting this._pagirId
+      this._pagirId = pagirId           // only set in-memory after validation passes
       logger.info('IdentityManager: generated fresh identity', pagirId)
     } catch (err) {
       logger.error('IdentityManager: failed to generate identity', err)

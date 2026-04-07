@@ -19,7 +19,7 @@ export function generatePagirId(): string {
   let id = 'PAG-'
   for (let g = 0; g < 3; g++) {
     for (let i = 0; i < 4; i++) {
-      id += ALPHABET[bytes[g * 4 + i] % 32]
+      id += ALPHABET[bytes[g * 4 + i] % 31]
     }
     if (g < 2) id += '-'
   }
