@@ -86,11 +86,13 @@ export const userRepo = {
   },
 
   async revoke(id: string): Promise<void> {
+    const user = await db.user.findUnique({ where: { id }, select: { phoneHash: true } })
+    if (!user) return
     await db.user.update({
       where: { id },
       data: {
         revokedAt: new Date(),
-        phoneHash: db.user.fields.phoneHash + ':revoked',  // salt uniqueness
+        phoneHash: user.phoneHash + ':revoked:' + id.slice(-8),
         stablePhoneHash: null,
       },
     })

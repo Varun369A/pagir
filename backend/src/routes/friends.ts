@@ -178,21 +178,25 @@ export async function friendsRoutes(app: FastifyInstance) {
     const { friendId } = request.params as { friendId: string }
     const pagirId = request.user.pagirId
 
+    // Remove friendship and any existing requests between these two users
     await db.$transaction([
-      // Remove friendship
       db.friendship.deleteMany({
         where: { OR: [
           { userAId: pagirId, userBId: friendId },
           { userAId: friendId, userBId: pagirId },
         ]},
       }),
-      // Block via friend request record
-      db.friendRequest.upsert({
-        where: { id: `block-${pagirId}-${friendId}` },
-        update: { status: 'BLOCKED' },
-        create: { id: `block-${pagirId}-${friendId}`, senderId: pagirId, receiverId: friendId, status: 'BLOCKED' },
+      db.friendRequest.deleteMany({
+        where: { OR: [
+          { senderId: pagirId, receiverId: friendId },
+          { senderId: friendId, receiverId: pagirId },
+        ]},
       }),
     ])
+    // Create the block record separately (needs a valid UUID id)
+    await db.friendRequest.create({
+      data: { senderId: pagirId, receiverId: friendId, status: 'BLOCKED' },
+    })
 
     return reply.send({ success: true })
   })

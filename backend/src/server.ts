@@ -29,6 +29,7 @@ async function build() {
     logger: false,   // We use our own Pino logger
     genReqId: generateRequestId,
     trustProxy: true,  // Railway/Nginx sits in front
+    bodyLimit: 3 * 1024 * 1024,  // 3 MB — relay frames up to 2 MB base64 encoded
   })
 
   // ─── Global plugins ───────────────────────────────────────────────────────
