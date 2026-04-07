@@ -3,6 +3,7 @@ package com.pagir2
 import android.app.Application
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
+import com.pagir2.acoustic.OliPackage
 import com.facebook.react.ReactHost
 import com.facebook.react.ReactNativeHost
 import com.facebook.react.ReactPackage
@@ -18,6 +19,7 @@ class MainApplication : Application(), ReactApplication {
         override fun getPackages(): List<ReactPackage> =
             PackageList(this).packages.apply {
               // Manually add packages not auto-linked here
+              add(OliPackage())
             }
 
         override fun getJSMainModuleName(): String = "index"

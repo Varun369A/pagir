@@ -34,6 +34,7 @@ import { sealFrame, openFrame, shouldForward, decrementTtl, replayGuard } from '
 import { FrameType, FrameFlag, DEFAULT_TTL, encodeFrame, decodeFrame, newFrameId, frameIdToHex } from './FrameCodec'
 import { bleMesh, bleSegmentAssembler } from './BLEMesh'
 import { wifiMesh } from './WiFiMesh'
+import { acousticMesh } from './AcousticMesh'
 import { identityManager } from './IdentityManager'
 import { contactStore } from './ContactStore'
 import { syncQueue } from './SyncQueue'
@@ -112,6 +113,13 @@ class MeshRouter {
     bleMesh.onFrame((raw, rssi) => this._onRawFrame(raw, 'ble_adv', rssi))
     wifiMesh.onFrame((raw, peer) => this._onRawFrame(raw, peer.transport as any, 0))
 
+    // TARANG-OLI acoustic transport (ஒலி mesh)
+    if (acousticMesh.isAvailable()) {
+      acousticMesh.onFrame(raw => this._onRawFrame(raw, 'acoustic', 0))
+      await acousticMesh.startListening()
+      console.log('[MeshRouter] TARANG-OLI தரங்க்-ஒலி acoustic transport active')
+    }
+
     // Advertise presence
     await wifiMesh.advertisePresence(identity.pagirId)
     await wifiMesh.startDiscovery()
@@ -157,6 +165,7 @@ class MeshRouter {
     bleMesh.stopScanning()
     wifiMesh.stopDiscovery()
     await wifiMesh.stopAdvertising()
+    await acousticMesh.stopListening()
   }
 
   // ─── Send API ────────────────────────────────────────────────────────────────
@@ -258,7 +267,18 @@ class MeshRouter {
       return
     }
 
-    // Priority 4: Internet relay
+    // Priority 4: TARANG-OLI acoustic (ஒலி) — offline, no infrastructure
+    // Encodes frame as FSK audio at 18-19 kHz
+    // Range: 50-500m phone speaker, up to 5km external speaker
+    // 100 users × 5km = 500km (Coimbatore → Chennai)
+    if (acousticMesh.isAvailable() && frameRaw.length <= 512) {
+      try {
+        await acousticMesh.broadcast(frameRaw)
+        return
+      } catch { /* fall through to internet */ }
+    }
+
+    // Priority 5: Internet relay
     try {
       if (apiClient.isAuthenticated()) {
         const b64 = Buffer.from(frameRaw).toString('base64')
