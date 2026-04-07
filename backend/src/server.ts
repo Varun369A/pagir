@@ -46,6 +46,13 @@ async function build() {
     contentSecurityPolicy: false,  // API — no HTML
   })
 
+  // Allow DELETE/PUT requests with Content-Type: application/json but no body
+  // (Fastify 5 is strict about this by default; mobile clients often omit the body)
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+    if (!body || body === '') { done(null, null); return }
+    try { done(null, JSON.parse(body as string)) } catch (err) { done(err as Error, undefined) }
+  })
+
   registerErrorHandler(app)
 
   // ─── Request logging ──────────────────────────────────────────────────────

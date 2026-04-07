@@ -120,25 +120,9 @@ export const userRepo = {
   async hardDelete(id: string): Promise<void> {
     // Delete related records first (FK constraints), then user
     await db.deviceToken.deleteMany({ where: { userId: id } })
-    try {
-      await db.friendRequest.deleteMany({ where: { OR: [{ senderId: id }, { receiverId: id }] } })
-    } catch (err: any) {
-      throw new Error('hardDelete.friendRequest.deleteMany: ' + String(err?.message ?? err) + ' meta:' + JSON.stringify(err?.meta))
-    }
-    try {
-      await db.friendship.deleteMany({ where: { OR: [{ userAId: id }, { userBId: id }] } })
-    } catch (err: any) {
-      throw new Error('hardDelete.friendship.deleteMany: ' + String(err?.message ?? err) + ' meta:' + JSON.stringify(err?.meta))
-    }
-    try {
-      await db.transferSession.deleteMany({ where: { OR: [{ senderId: id }, { receiverId: id }] } })
-    } catch (err: any) {
-      throw new Error('hardDelete.transferSession.deleteMany: ' + String(err?.message ?? err) + ' meta:' + JSON.stringify(err?.meta))
-    }
-    try {
-      await db.user.delete({ where: { id } })
-    } catch (err: any) {
-      throw new Error('hardDelete.user.delete: ' + String(err?.message ?? err) + ' meta:' + JSON.stringify(err?.meta))
-    }
+    await db.friendRequest.deleteMany({ where: { OR: [{ senderId: id }, { receiverId: id }] } })
+    await db.friendship.deleteMany({ where: { OR: [{ userAId: id }, { userBId: id }] } })
+    await db.transferSession.deleteMany({ where: { OR: [{ senderId: id }, { receiverId: id }] } })
+    await db.user.delete({ where: { id } })
   },
 }
