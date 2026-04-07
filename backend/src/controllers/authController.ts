@@ -54,7 +54,7 @@ export const authController = {
     return otpService.emergencyWipe(oldPagirId, newPagirId, newPublicKey)
   },
 
-  async deleteAccount(pagirId: string) {
-    return otpService.deleteAccount(pagirId)
+  async deleteAccount(pagirId: string, jti: string) {
+    return otpService.deleteAccount(pagirId, jti)
   },
 }

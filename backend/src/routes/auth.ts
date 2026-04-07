@@ -111,7 +111,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
 
   // DELETE /auth/account — authenticated, permanent deletion
   app.delete('/auth/account', { preHandler: [authenticate] }, async (req, reply) => {
-    await authController.deleteAccount(req.user.sub)
+    await authController.deleteAccount(req.user.sub, req.user.jti)
     return reply.status(200).send({ success: true, data: { message: 'Account permanently deleted' } })
   })
 }

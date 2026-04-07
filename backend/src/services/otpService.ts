@@ -325,7 +325,7 @@ export const otpService = {
 
   // ── Delete account ─────────────────────────────────────────────────────────
 
-  async deleteAccount(pagirId: string): Promise<void> {
+  async deleteAccount(pagirId: string, jti: string): Promise<void> {
     const user = await userRepo.findById(pagirId)
     if (!user) throw AppError.notFound(ErrorCode.USER_NOT_FOUND, 'Account not found')
 
@@ -335,6 +335,7 @@ export const otpService = {
     await Promise.all([
       redis.del(RedisKey.refreshToken(pagirId)),
       redis.del(RedisKey.pagirIdRevoked(pagirId)),
+      redis.setex(RedisKey.accessRevoked(jti), TTL.ACCESS_REVOKED, '1'),
     ])
 
     logger.info({ requestType: 'account_deleted', pagirId }, 'Account permanently deleted')
