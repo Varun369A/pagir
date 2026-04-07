@@ -155,18 +155,26 @@ export async function friendsRoutes(app: FastifyInstance) {
     const { friendId } = request.params as { friendId: string }
     const pagirId = request.user.pagirId
 
-    await db.friendship.deleteMany({
-      where: { OR: [
-        { userAId: pagirId, userBId: friendId },
-        { userAId: friendId, userBId: pagirId },
-      ]},
-    })
-    await db.friendRequest.deleteMany({
-      where: { OR: [
-        { senderId: pagirId, receiverId: friendId },
-        { senderId: friendId, receiverId: pagirId },
-      ]},
-    })
+    try {
+      await db.friendship.deleteMany({
+        where: { OR: [
+          { userAId: pagirId, userBId: friendId },
+          { userAId: friendId, userBId: pagirId },
+        ]},
+      })
+      await db.friendRequest.deleteMany({
+        where: { OR: [
+          { senderId: pagirId, receiverId: friendId },
+          { senderId: friendId, receiverId: pagirId },
+        ]},
+      })
+    } catch (err: any) {
+      // Surface actual error for diagnosis
+      return reply.status(500).send({
+        success: false,
+        error: { code: 'DELETE_FRIENDS_DEBUG', message: String(err?.message ?? err), meta: err?.meta },
+      })
+    }
 
     return reply.send({ success: true })
   })

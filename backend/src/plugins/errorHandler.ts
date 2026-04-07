@@ -95,15 +95,13 @@ export function registerErrorHandler(app: FastifyInstance): void {
       })
     }
 
-    // Unknown errors — don't leak internals
+    // Unknown errors — temporarily surfacing message for diagnosis
     logger.error({ requestId, err: error }, 'Unhandled error')
     return reply.status(500).send({
       success: false,
       error: {
         code: ErrorCode.INTERNAL_ERROR,
-        message: process.env.NODE_ENV === 'production'
-          ? 'An unexpected error occurred'
-          : error.message,
+        message: error.message,
         requestId,
       },
     })
