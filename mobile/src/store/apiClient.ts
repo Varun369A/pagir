@@ -239,6 +239,16 @@ class ApiClient {
   async updatePublicKey(publicKey: string): Promise<void> {
     await this.request({ method: 'PUT', path: '/users/me/public-key', body: { publicKey } })
   }
+
+  // ── Relay endpoints ────────────────────────────────────────────────────────
+
+  async sendFrame(receiverId: string, frameBase64: string): Promise<void> {
+    await this.request({ method: 'POST', path: '/relay/frame', body: { receiverId, frameBase64 } })
+  }
+
+  async pollFrames(): Promise<Array<{ senderId: string; frame: string; ts: number }>> {
+    return this.request({ method: 'GET', path: '/relay/poll' }) as any
+  }
 }
 
 function _generateId(): string {

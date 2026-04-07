@@ -19,7 +19,8 @@ import HomeScreen            from '../screens/HomeScreen'
 import AddContactScreen      from '../screens/AddContactScreen'
 import ShareIdentityScreen   from '../screens/ShareIdentityScreen'
 import EmergencyScreen       from '../screens/EmergencyScreen'
-import { SettingsScreen }    from '../screens/SettingsScreen'
+import SettingsScreen        from '../screens/SettingsScreen'
+import ChatScreen           from '../screens/ChatScreen'
 
 export type RootStackParamList = {
   // Onboarding
@@ -40,6 +41,7 @@ export type RootStackParamList = {
   ShareIdentity:   undefined
   Settings:        undefined
   Emergency:       undefined
+  Chat: { contactPagirId: string; contactName: string }
 }
 
 const Stack = createNativeStackNavigator<RootStackParamList>()
@@ -64,6 +66,7 @@ export default function AppNavigator() {
         <Stack.Screen name="ShareIdentity" component={ShareIdentityScreen} />
         <Stack.Screen name="Settings"      component={SettingsScreen} />
         <Stack.Screen name="Emergency"     component={EmergencyScreen} />
+        <Stack.Screen name="Chat"          component={ChatScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   )

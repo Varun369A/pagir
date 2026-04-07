@@ -145,7 +145,13 @@ export default function HomeScreen({ navigation }: Props) {
           </>
         }
         renderItem={({ item }) => (
-          <ContactRow contact={item} />
+          <ContactRow
+            contact={item}
+            onPress={() => navigation.navigate('Chat', {
+              contactPagirId: item.pagirId,
+              contactName: item.nickname || item.displayName,
+            })}
+          />
         )}
         ListEmptyComponent={
           loading
@@ -159,12 +165,12 @@ export default function HomeScreen({ navigation }: Props) {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function ContactRow({ contact }: { contact: Contact }) {
-  const label = contact.nickname || contact.displayName
+function ContactRow({ contact, onPress }: { contact: Contact; onPress: () => void }) {
+  const label    = contact.nickname || contact.displayName
   const initials = label.slice(0, 2).toUpperCase()
 
   return (
-    <View style={S.contactRow}>
+    <TouchableOpacity style={S.contactRow} onPress={onPress} activeOpacity={0.7}>
       <View style={S.avatar}>
         <Text style={S.avatarText}>{initials}</Text>
       </View>
@@ -172,10 +178,13 @@ function ContactRow({ contact }: { contact: Contact }) {
         <Text style={S.contactName}>{label}</Text>
         <Text style={S.contactId} numberOfLines={1}>{contact.pagirId}</Text>
       </View>
-      {contact.lastSeen && (
-        <Text style={S.contactTime}>{formatRelative(contact.lastSeen)}</Text>
-      )}
-    </View>
+      <View style={S.contactRight}>
+        {contact.lastSeen && (
+          <Text style={S.contactTime}>{formatRelative(contact.lastSeen)}</Text>
+        )}
+        <Text style={S.chevron}>›</Text>
+      </View>
+    </TouchableOpacity>
   )
 }
 
@@ -236,13 +245,15 @@ const S = StyleSheet.create({
 
   sectionTitle: { paddingHorizontal: Spacing.xl, marginBottom: 8, fontSize: 13, color: Colors.textMuted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8 },
 
-  contactRow:  { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.xl, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  avatar:      { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.primaryDeep, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
-  avatarText:  { fontSize: 16, fontWeight: '700', color: Colors.primary },
-  contactInfo: { flex: 1 },
-  contactName: { fontSize: 15, fontWeight: '600', color: Colors.textPrimary },
-  contactId:   { fontSize: 12, color: Colors.textMuted, marginTop: 2, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
-  contactTime: { fontSize: 12, color: Colors.textMuted },
+  contactRow:   { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.xl, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  avatar:       { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.primaryDeep, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  avatarText:   { fontSize: 16, fontWeight: '700', color: Colors.primary },
+  contactInfo:  { flex: 1 },
+  contactName:  { fontSize: 15, fontWeight: '600', color: Colors.textPrimary },
+  contactId:    { fontSize: 12, color: Colors.textMuted, marginTop: 2, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  contactRight: { alignItems: 'flex-end', gap: 2 },
+  contactTime:  { fontSize: 12, color: Colors.textMuted },
+  chevron:      { fontSize: 18, color: Colors.textMuted },
 
   loader: { marginTop: 60 },
   empty:      { alignItems: 'center', paddingTop: 48, paddingHorizontal: Spacing.xl },

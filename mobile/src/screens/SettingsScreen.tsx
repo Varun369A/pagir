@@ -106,8 +106,13 @@ export default function SettingsScreen({ navigation }: Props) {
     setSigningOut(true)
     try {
       await apiClient.logout()
-    } catch { /* ignore */ }
-    await AsyncStorage.removeItem('pagir2:offline_mode').catch(() => {})
+    } catch { /* ignore — tokens cleared in finally inside apiClient.logout */ }
+    await AsyncStorage.multiRemove([
+      'pagir2:offline_mode',
+      'pagir2:registered_id',
+      'pagir2:registered_name',
+      'pagir2:registered_phone',
+    ]).catch(() => {})
     dispatch(clearAuth())
     navigation.reset({ index: 0, routes: [{ name: 'Login' }] })
   }
